@@ -1,0 +1,29 @@
+{
+    "devices": {
+        "08848e268c8263d855cf18b6dd8658b97f92b2048a8bf04ab8014abf8b8c6fbe": {
+            "student": "سعد بندر العتيبي",
+            "secondary": "5fb6fde404b1b15aa3ab765e87d14cb5da5caf6af4c6360952ea461b55210088",
+            "hardware": "6bccd2a263b33f1a41f9485a24ecd0c7cf37208674d07169ceff2d34d85f5858",
+            "registered_at": "2025-04-26T17:12:17.567337",
+            "details": {
+                "user_agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 18_3_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.3 Mobile/15E148 Safari/604.1",
+                "platform": "iPhone",
+                "webgl_renderer": "Apple GPU",
+                "screen_width": 430,
+                "screen_height": 932,
+                "color_depth": 24,
+                "pixel_ratio": 3,
+                "language": "en-US",
+                "timezone": "Asia/Riyadh",
+                "ip_address": "127.0.0.1"
+            }
+        }
+    },
+    "device_mappings": {
+        "6bccd2a263b33f1a41f9485a24ecd0c7cf37208674d07169ceff2d34d85f5858": "سعد بندر العتيبي"
+    },
+    "metadata": {
+        "created": "2025-04-26T17:12:17.560231",
+        "updated": "2025-04-26T17:12:17.567345"
+    }
+}
