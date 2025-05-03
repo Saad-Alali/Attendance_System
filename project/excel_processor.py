@@ -29,3 +29,19 @@ def merge_excel_files(download_dir, output_file):
         merged_df.to_excel(output_file, index=False)
     except Exception as e:
         print(f"Error merging files: {str(e)}")
+
+def split_by_component(merged_file, output_dir):
+    try:
+        df = pd.read_excel(merged_file)
+        
+        component_types = ['LEC1', 'LEC2', 'LAB1', 'LAB2']
+        
+        for component in component_types:
+            component_df = df[df['اسم المكون'] == component]
+            
+            if not component_df.empty:
+                output_file = os.path.join(output_dir, f"{component}.xlsx")
+                component_df.to_excel(output_file, index=False)
+                print(f"Created {component} file with {len(component_df)} records")
+    except Exception as e:
+        print(f"Error splitting files by component: {str(e)}")

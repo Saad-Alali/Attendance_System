@@ -99,8 +99,6 @@ def process_components(driver, wait, download_dir):
         time.sleep(2)
         print("Searching for components...")
         
-        # For each component, we'll process them one by one without storing references
-        # First, count how many components we have
         component_count = 0
         try:
             rows = wait.until(EC.presence_of_all_elements_located((By.XPATH, "//tr[td]")))
@@ -114,7 +112,7 @@ def process_components(driver, wait, download_dir):
                 print(f"Found {component_count} components with alternative method.")
             except Exception as e:
                 print(f"Could not determine component count: {str(e)}")
-                component_count = 4  # Fallback to a reasonable default
+                component_count = 4
         
         if component_count == 0:
             print("No components found. Taking screenshot for debugging...")
@@ -122,12 +120,10 @@ def process_components(driver, wait, download_dir):
             driver.save_screenshot(screenshot_path)
             return
         
-        # Process each component by index rather than storing references
         for i in range(component_count):
             try:
                 print(f"Processing component {i+1} of {component_count}...")
                 
-                # Find the components again each time to avoid stale references
                 try:
                     rows = wait.until(EC.presence_of_all_elements_located((By.XPATH, "//tr[td]")))
                     if i < len(rows):
@@ -138,7 +134,6 @@ def process_components(driver, wait, download_dir):
                         
                         time.sleep(1)
                         
-                        # Check for tools icon
                         try:
                             tools_icon = WebDriverWait(driver, 3).until(EC.element_to_be_clickable((By.ID, "tools")))
                             if tools_icon.is_displayed():
@@ -149,9 +144,7 @@ def process_components(driver, wait, download_dir):
                         except Exception as e:
                             print(f"No tools icon found, skipping component: {str(e)}")
                         
-                        # Always go back to components list after each component
                         try:
-                            # Try direct navigation first as it's more reliable
                             current_url = driver.current_url
                             base_url = current_url.split('#')[0]
                             components_url = base_url + '#/components'
@@ -164,7 +157,6 @@ def process_components(driver, wait, download_dir):
                                 time.sleep(2)
                             except Exception as e2:
                                 print(f"Error using history back: {str(e2)}")
-                                # Last resort - try to find gradebook tab and then components again
                                 try:
                                     gradebook_tab = wait.until(EC.element_to_be_clickable((By.ID, "gradebook-tab")))
                                     gradebook_tab.click()
@@ -174,16 +166,14 @@ def process_components(driver, wait, download_dir):
                                     time.sleep(2)
                                 except Exception as e3:
                                     print(f"Failed all navigation attempts: {str(e3)}")
-                                    # If all navigation fails, try to return to gradebook
                                     driver.get("https://rytfac.tvtc.gov.sa/FacultySelfService/ssb/GradeEntry#/gradebook")
                                     time.sleep(3)
-                                    return  # Exit component processing
+                                    return
                     else:
                         print(f"Component index {i+1} out of range, skipping")
                 
                 except Exception as e:
                     print(f"Error finding component rows: {str(e)}")
-                    # Try to recover by returning to components page
                     try:
                         current_url = driver.current_url
                         base_url = current_url.split('#')[0]
@@ -191,20 +181,18 @@ def process_components(driver, wait, download_dir):
                         driver.get(components_url)
                         time.sleep(2)
                     except Exception:
-                        return  # Exit component processing if we can't recover
+                        return
             
             except Exception as e:
                 print(f"Error processing component {i+1}: {str(e)}")
                 
-                # Try to recover navigation
                 try:
                     driver.get("https://rytfac.tvtc.gov.sa/FacultySelfService/ssb/GradeEntry#/components")
                     time.sleep(2)
                 except Exception:
-                    # If all else fails, return to gradebook
                     driver.get("https://rytfac.tvtc.gov.sa/FacultySelfService/ssb/GradeEntry#/gradebook")
                     time.sleep(2)
-                    return  # Exit component processing
+                    return
                 
     except Exception as e:
         print(f"Error processing components: {str(e)}")

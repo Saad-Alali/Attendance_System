@@ -6,7 +6,7 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from project.file_validator import validate_excel_file
 from project.browser_automation import automate_browser
-from project.excel_processor import merge_excel_files
+from project.excel_processor import merge_excel_files, split_by_component
 
 def main():
     root = Tk()
@@ -27,15 +27,22 @@ def main():
         return
     
     print("File validated successfully. Opening browser...")
-    download_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "downloads")
+    
+    desktop_path = os.path.join(os.path.expanduser("~"), "Desktop", "TVTC_Grades")
+    os.makedirs(desktop_path, exist_ok=True)
+    
+    download_dir = os.path.join(desktop_path, "downloads")
     os.makedirs(download_dir, exist_ok=True)
     
     automate_browser(download_dir)
     
-    output_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), "merged_data.xlsx")
+    output_file = os.path.join(desktop_path, "merged_data.xlsx")
     merge_excel_files(download_dir, output_file)
     
     print(f"Data merged successfully in file: {output_file}")
+    
+    split_by_component(output_file, desktop_path)
+    print("Files split by component successfully.")
 
 if __name__ == "__main__":
     main()
