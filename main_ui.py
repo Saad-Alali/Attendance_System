@@ -227,7 +227,7 @@ class MyTVTCApp:
             btn_frame,
             text="رفع التحضير في الموقع",
             style='Primary.TButton',
-            command=lambda: self.run_script("ext-main.py")
+            command=lambda: self.run_script("main-finished.py")
         )
         self.btn_ext_main.pack(pady=25, fill=tk.X)
         
@@ -248,7 +248,7 @@ class MyTVTCApp:
             button_map = {
                 "main-scraping.py": (self.btn_scraping, "تصدير قالب التحضير"),
                 "main-qr_attendance.py": (self.btn_qr_attendance, "بدء التحضير"),
-                "ext-main.py": (self.btn_ext_main, "رفع التحضير في الموقع")
+                "main-finished.py": (self.btn_ext_main, "رفع التحضير في الموقع")
             }
             
             current_button, original_text = button_map[script_name]
