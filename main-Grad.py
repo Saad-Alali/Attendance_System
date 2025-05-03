@@ -6,7 +6,7 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from project.file_validator import validate_excel_file
 from project.browser_automation import automate_browser
-from project.excel_processor import merge_excel_files, split_by_component
+from project.excel_processor import merge_excel_files, split_by_component, update_component_files
 
 def main():
     root = Tk()
@@ -43,6 +43,21 @@ def main():
     
     split_by_component(output_file, desktop_path)
     print("Files split by component successfully.")
+    
+    update_component_files(excel_file_path, desktop_path)
+    print("Component files updated with grades from original template.")
+
+    deleted_count = 0
+    for file in os.listdir(download_dir):
+        file_path = os.path.join(download_dir, file)
+        try:
+            if os.path.isfile(file_path):
+                os.unlink(file_path)
+                deleted_count += 1
+        except Exception as e:
+            print(f"Error deleting file {file_path}: {str(e)}")
+    
+    print(f"Cleaned up downloads folder: {deleted_count} temporary files deleted.")
 
 if __name__ == "__main__":
     main()
