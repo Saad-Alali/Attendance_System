@@ -9,10 +9,11 @@ import io
 import pandas as pd
 import webbrowser
 from pathlib import Path
-from pyngrok import ngrok
-from pyngrok import conf as ngrok_conf
+import socket
+import tempfile
+import random
+import urllib.request
 
-# Import QR attendance modules
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 try:
     from qr_attendance.excel_handler import ExcelHandler
@@ -20,7 +21,6 @@ try:
     from qr_attendance.web_server import start_server
     from qr_attendance.config import COLUMN_NAMES, ATTENDANCE_DURATION, QR_OUTPUT_FILENAME, OUTPUT_FILENAME
 except ImportError:
-    # Fallback for direct imports
     try:
         from excel_handler import ExcelHandler
         from generate_qr import generate_lecture_qr
@@ -67,6 +67,20 @@ class ThemeManager:
         )
         style.map(
             'Primary.TButton',
+            background=[('active', cls.PRIMARY_LIGHT)],
+            foreground=[('active', cls.TEXT_LIGHT)]
+        )
+        
+        style.configure(
+            'Graduation.TButton',
+            font=("Segoe UI", 16, "bold"),
+            background=cls.PRIMARY,
+            foreground=cls.TEXT_LIGHT,
+            padding=(20, 15),
+            borderwidth=0,
+        )
+        style.map(
+            'Graduation.TButton',
             background=[('active', cls.PRIMARY_LIGHT)],
             foreground=[('active', cls.TEXT_LIGHT)]
         )
@@ -134,7 +148,7 @@ class MyTVTCApp:
         self.root = root
         self.root.title("MyTVTC")
         
-        self.root.minsize(950, 650)
+        self.root.minsize(1100, 750)
         self.root.configure(bg=ThemeManager.BG_LIGHT)
         
         self.style = ttk.Style()
@@ -143,11 +157,10 @@ class MyTVTCApp:
         self.main_container = ttk.Frame(self.root, style='Light.TFrame')
         self.main_container.pack(fill=tk.BOTH, expand=True)
         
-        # متغيرات لنظام التحضير
         self.excel_handler = None
         self.lecture_date = None
         self.timer_thread = None
-        self.ngrok_tunnel = None
+        self.tunnel_process = None
         self.qr_window = None
         
         self.create_sidebar()
@@ -155,7 +168,7 @@ class MyTVTCApp:
         
         self.setup_app_icon()
         self.setup_responsive_layout()
-        self.center_window(950, 650)
+        self.center_window(1100, 750)
         
     def create_sidebar(self):
         self.sidebar = ttk.Frame(self.main_container, style='Dark.TFrame', width=250)
@@ -185,7 +198,7 @@ class MyTVTCApp:
         
         version_label = ttk.Label(
             version_frame,
-            text="الإصدار 2.0.0",
+            text="الإصدار 2.1.0",
             style='Version.TLabel'
         )
         version_label.pack(pady=5, anchor=tk.CENTER)
@@ -205,7 +218,7 @@ class MyTVTCApp:
         heading.pack(anchor=tk.CENTER)
         
         btn_frame = ttk.Frame(self.content, style='Light.TFrame')
-        btn_frame.pack(pady=30, padx=100)
+        btn_frame.pack(pady=40, padx=140)
         
         self.btn_scraping = ttk.Button(
             btn_frame,
@@ -231,6 +244,14 @@ class MyTVTCApp:
         )
         self.btn_ext_main.pack(pady=25, fill=tk.X)
         
+        self.btn_grad = ttk.Button(
+            btn_frame,
+            text="نظام رصد الدرجات",
+            style='Graduation.TButton',
+            command=lambda: self.run_script("main-Grad.py")
+        )
+        self.btn_grad.pack(pady=25, fill=tk.X)
+        
         self.status_frame = ttk.Frame(self.content, style='Light.TFrame')
         self.status_frame.pack(side=tk.BOTTOM, fill=tk.X, padx=30, pady=20)
         
@@ -248,7 +269,8 @@ class MyTVTCApp:
             button_map = {
                 "main-scraping.py": (self.btn_scraping, "تصدير قالب التحضير"),
                 "main-qr_attendance.py": (self.btn_qr_attendance, "بدء التحضير"),
-                "main-finished.py": (self.btn_ext_main, "رفع التحضير في الموقع")
+                "main-finished.py": (self.btn_ext_main, "رفع التحضير في الموقع"),
+                "main-Grad.py": (self.btn_grad, "نظام رصد الدرجات")
             }
             
             current_button, original_text = button_map[script_name]
@@ -284,15 +306,89 @@ class MyTVTCApp:
     def update_status(self, message):
         self.status_label.config(text=message)
     
+    def get_local_ip(self):
+        try:
+            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            s.connect(("8.8.8.8", 80))
+            ip = s.getsockname()[0]
+            s.close()
+            return ip
+        except:
+            return socket.gethostbyname(socket.gethostname())
+    
+    def create_tunnel(self, port=5000):
+        self.update_status("جاري إنشاء اتصال للوصول من خارج الشبكة...")
+        
+        temp_dir = os.path.join(tempfile.gettempdir(), "attendance_tunnel")
+        os.makedirs(temp_dir, exist_ok=True)
+        
+        local_ip = self.get_local_ip()
+        
+        try:
+            tunnel_cmd = 'ssh -o StrictHostKeyChecking=no -R 80:localhost:5000 localhost.run'
+            process = subprocess.Popen(
+                tunnel_cmd, 
+                shell=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True
+            )
+            
+            import re
+            for i in range(20):
+                line = process.stdout.readline()
+                if not line and process.poll() is not None:
+                    break
+                
+                match = re.search(r'https?://[a-zA-Z0-9\-]+\.localhost\.run', line)
+                if match:
+                    public_url = match.group(0)
+                    self.update_status(f"تم إنشاء اتصال: {public_url}")
+                    return public_url, process
+                
+                time.sleep(0.5)
+            
+            process.kill()
+            
+        except Exception as e:
+            print(f"فشل في الاتصال باستخدام localhost.run: {e}")
+        
+        try:
+            tunnel_cmd = 'ssh -o StrictHostKeyChecking=no -R 80:localhost:5000 serveo.net'
+            process = subprocess.Popen(
+                tunnel_cmd, 
+                shell=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True
+            )
+            
+            import re
+            for i in range(20):
+                line = process.stdout.readline()
+                if not line and process.poll() is not None:
+                    break
+                
+                match = re.search(r'https?://[a-zA-Z0-9\-\.]+\.serveo\.net', line)
+                if match:
+                    public_url = match.group(0)
+                    self.update_status(f"تم إنشاء اتصال: {public_url}")
+                    return public_url, process
+                
+                time.sleep(0.5)
+            
+            process.kill()
+            
+        except Exception as e:
+            print(f"فشل في الاتصال باستخدام serveo.net: {e}")
+        
+        self.update_status("تعذر إنشاء اتصال خارجي، سيتم استخدام الشبكة المحلية")
+        return f"http://{local_ip}:{port}", None
+    
     def start_qr_attendance(self):
-        """بدء نظام التحضير بالـ QR مباشرة من الواجهة الرئيسية"""
         try:
             self.update_status("جاري بدء نظام التحضير...")
             
-            # Configure ngrok
-            ngrok_conf.get_default().authtoken = '2uJbHU37cEkmp2othhPYSZjNY8N_5trhFGNwJKjswwSp89k6Y'
-            
-            # اختيار ملف الإكسل
             excel_file = filedialog.askopenfilename(
                 title="اختر ملف التحضير",
                 filetypes=[("ملفات إكسل", "*.xlsx;*.xls")]
@@ -304,15 +400,12 @@ class MyTVTCApp:
             
             self.update_status("جاري تحليل ملف التحضير...")
             
-            # تحميل ملف الإكسل
             self.excel_handler = ExcelHandler(excel_file)
             self.excel_handler.load_file()
             
-            # تحويل عمود التاريخ
             date_col = COLUMN_NAMES["date"]
             self.excel_handler.convert_date_column()
             
-            # التحقق من وجود محاضرة اليوم
             today_lectures = self.excel_handler.check_lecture_today()
             if today_lectures is None or today_lectures.empty:
                 self.show_styled_message(
@@ -323,7 +416,6 @@ class MyTVTCApp:
                 self.update_status("لا توجد محاضرة اليوم")
                 return
             
-            # استخراج معلومات المحاضرة
             lecture_info = today_lectures.iloc[0]
             
             lecture_name_col = COLUMN_NAMES["lecture_name"]
@@ -340,53 +432,47 @@ class MyTVTCApp:
             
             self.update_status(f"تم العثور على محاضرة: {lecture_name}")
             
-            # إعادة تعيين بيانات الحضور السابقة
             self.excel_handler.reset_attendance_for_date(self.lecture_date)
             
-            # طلب مدة التحضير من المستخدم
             duration_minutes = self.show_duration_dialog()
             if duration_minutes is None:
                 self.update_status("تم إلغاء العملية")
                 return
                 
-            # تحويل الدقائق إلى ثواني
             custom_attendance_duration = duration_minutes * 60
             
-            # إنشاء رمز الجلسة
             session_code = str(int(time.time()))[-8:]
+            port = 5000
             
-            # فتح نفق ngrok
-            try:
-                self.ngrok_tunnel = ngrok.connect(5000)
-                public_url = self.ngrok_tunnel.public_url
-            except Exception as ngrok_error:
-                self.show_styled_message(
-                    "خطأ في الاتصال",
-                    f"فشل في إنشاء اتصال ngrok: {ngrok_error}",
-                    "error"
-                )
-                self.update_status("فشل في بدء نظام التحضير")
-                return
+            def mark_attendance_with_fingerprint(student_name, student_id, validate_only=False):
+                if not self.excel_handler or not self.lecture_date:
+                    return False, "خطأ في النظام: لم يتم تهيئة نظام التحضير بشكل صحيح"
+                
+                result = self.excel_handler.mark_attendance(student_name, student_id, self.lecture_date)
+                
+                if not validate_only and result[0] and self.qr_window and self.qr_window.winfo_exists():
+                    present_count = len(self.excel_handler.present_students)
+                    self.present_count_var.set(str(present_count))
+                    
+                return result
             
-            # بدء خادم الويب
-            server_url, attendance_url = start_server(
+            server_url, _ = start_server(
                 host="0.0.0.0",
-                port=5000,
+                port=port,
                 session_code=session_code,
-                callback=lambda name, id, validate_only=False: self.mark_student_attendance(name, id, validate_only)
+                callback=mark_attendance_with_fingerprint
             )
-
-            # إنشاء رمز QR
+            
+            public_url, self.tunnel_process = self.create_tunnel(port)
+            
             qr_attendance_url = f"{public_url}/attendance?session={session_code}"
             qr_output_path = QR_OUTPUT_FILENAME
             _, _, _ = generate_lecture_qr(lecture_name, self.lecture_date, qr_attendance_url, qr_output_path)
             
             self.update_status("تم إنشاء رمز QR بنجاح")
             
-            # عرض رمز QR في نافذة منفصلة
             self.show_qr_window(qr_output_path, lecture_name, duration_minutes)
             
-            # بدء مؤقت الحضور
             self.timer_thread = threading.Thread(
                 target=self.attendance_timer_thread,
                 args=(custom_attendance_duration,)
@@ -404,24 +490,19 @@ class MyTVTCApp:
             self.cleanup_resources()
     
     def show_duration_dialog(self):
-        """عرض نافذة لتحديد مدة التحضير بتصميم محسن"""
         duration_dialog = tk.Toplevel(self.root)
         duration_dialog.title("تحديد مدة التحضير")
         duration_dialog.configure(bg=ThemeManager.BG_LIGHT)
         duration_dialog.resizable(False, False)
         
-        # جعل النافذة مركزية
         self.center_window_on_parent(duration_dialog, 400, 250)
         
-        # جعل النافذة مودال (تمنع التفاعل مع النافذة الأم)
         duration_dialog.transient(self.root)
         duration_dialog.grab_set()
         
-        # إطار رئيسي
         main_frame = ttk.Frame(duration_dialog, style='Light.TFrame')
         main_frame.pack(padx=30, pady=30, fill=tk.BOTH, expand=True)
         
-        # عنوان
         title_label = ttk.Label(
             main_frame,
             text="تحديد مدة التحضير",
@@ -431,7 +512,6 @@ class MyTVTCApp:
         )
         title_label.pack(pady=(0, 20))
         
-        # وصف
         desc_label = ttk.Label(
             main_frame,
             text="الرجاء تحديد مدة التحضير بالدقائق:",
@@ -439,14 +519,11 @@ class MyTVTCApp:
         )
         desc_label.pack(pady=(0, 15))
         
-        # متغير لتخزين القيمة
         duration_var = tk.IntVar(value=ATTENDANCE_DURATION // 60)
         
-        # إطار للمدخل
         entry_frame = ttk.Frame(main_frame, style='Light.TFrame')
         entry_frame.pack(pady=(0, 20), fill=tk.X)
         
-        # مدخل المدة
         duration_entry = ttk.Entry(
             entry_frame,
             textvariable=duration_var,
@@ -455,7 +532,6 @@ class MyTVTCApp:
         )
         duration_entry.pack(side=tk.LEFT, padx=(0, 10))
         
-        # نص الدقائق
         minutes_label = ttk.Label(
             entry_frame,
             text="دقيقة",
@@ -463,14 +539,11 @@ class MyTVTCApp:
         )
         minutes_label.pack(side=tk.LEFT)
         
-        # إطار للأزرار
         button_frame = ttk.Frame(main_frame, style='Light.TFrame')
         button_frame.pack(fill=tk.X, pady=(10, 0))
         
-        # متغير للنتيجة
         result = [None]
         
-        # دالة للتأكيد
         def confirm():
             try:
                 value = duration_var.get()
@@ -485,12 +558,10 @@ class MyTVTCApp:
             except:
                 messagebox.showwarning("تحذير", "الرجاء إدخال قيمة صحيحة")
         
-        # دالة للإلغاء
         def cancel():
             result[0] = None
             duration_dialog.destroy()
         
-        # زر التأكيد
         confirm_button = ttk.Button(
             button_frame,
             text="تأكيد",
@@ -499,7 +570,6 @@ class MyTVTCApp:
         )
         confirm_button.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 5))
         
-        # زر الإلغاء
         cancel_button = ttk.Button(
             button_frame,
             text="إلغاء",
@@ -507,62 +577,77 @@ class MyTVTCApp:
         )
         cancel_button.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(5, 0))
         
-        # تعيين زر التأكيد كزر افتراضي
         duration_dialog.bind('<Return>', lambda event: confirm())
         
-        # انتظار إغلاق النافذة
         self.root.wait_window(duration_dialog)
         
         return result[0]
     
     def show_qr_window(self, qr_path, lecture_name, duration_minutes):
-        """عرض رمز QR في نافذة منفصلة"""
         if self.qr_window and self.qr_window.winfo_exists():
             self.qr_window.destroy()
         
         self.qr_window = tk.Toplevel(self.root)
         self.qr_window.title("رمز QR للتحضير")
         self.qr_window.configure(bg=ThemeManager.BG_LIGHT)
-        self.qr_window.minsize(500, 600)
+        self.qr_window.minsize(650, 750)
         
-        # جعل النافذة مركزية
-        self.center_window_on_parent(self.qr_window, 500, 600)
+        self.center_window_on_parent(self.qr_window, 650, 750)
         
-        # إطار رئيسي
         main_frame = ttk.Frame(self.qr_window, style='Light.TFrame')
         main_frame.pack(padx=30, pady=30, fill=tk.BOTH, expand=True)
         
-        # عنوان
         title_label = ttk.Label(
             main_frame,
             text=f"تحضير: {lecture_name}",
-            font=("Segoe UI", 16, "bold"),
+            font=("Segoe UI", 18, "bold"),
             foreground=ThemeManager.PRIMARY,
-            background=ThemeManager.BG_LIGHT
+            background=ThemeManager.BG_LIGHT,
+            wraplength=590
         )
         title_label.pack(pady=(0, 10))
         
-        # وصف
-        desc_label = ttk.Label(
-            main_frame,
-            text="اطلب من الطلاب مسح رمز QR التالي لتسجيل الحضور",
-            style='Light.TLabel'
-        )
-        desc_label.pack(pady=(0, 20))
+        info_frame = ttk.Frame(main_frame, style='Light.TFrame')
+        info_frame.pack(fill=tk.X, pady=(0, 20))
         
-        # عرض صورة QR
+        desc_label = ttk.Label(
+            info_frame,
+            text="اطلب من الطلاب مسح رمز QR التالي لتسجيل الحضور",
+            font=("Segoe UI", 12),
+            style='Light.TLabel',
+            wraplength=590
+        )
+        desc_label.pack(pady=(0, 5))
+        
+        network_label = ttk.Label(
+            info_frame,
+            text="يمكن للطلاب استخدام أي شبكة إنترنت (واي فاي أو بيانات)",
+            foreground=ThemeManager.SUCCESS,
+            background=ThemeManager.BG_LIGHT,
+            font=("Segoe UI", 12)
+        )
+        network_label.pack(pady=(0, 5))
+        
+        fingerprint_label = ttk.Label(
+            info_frame,
+            text="سيتم التحقق من بصمة الجهاز عند التسجيل، وسيتم رفض التسجيل في حالة وجود تعارض",
+            foreground=ThemeManager.ERROR,
+            background=ThemeManager.BG_LIGHT,
+            font=("Segoe UI", 11)
+        )
+        fingerprint_label.pack(pady=(0, 10))
+        
         try:
             from PIL import Image, ImageTk
             
             qr_image = Image.open(qr_path)
-            qr_image = qr_image.resize((350, 350), Image.LANCZOS)
+            qr_image = qr_image.resize((400, 400), Image.LANCZOS)
             qr_photo = ImageTk.PhotoImage(qr_image)
             
             qr_label = tk.Label(main_frame, image=qr_photo, bg=ThemeManager.BG_LIGHT)
-            qr_label.image = qr_photo  # حفظ مرجع للصورة
+            qr_label.image = qr_photo
             qr_label.pack(pady=10)
         except Exception as e:
-            # في حالة فشل عرض الصورة
             qr_error_label = ttk.Label(
                 main_frame,
                 text=f"تعذر عرض رمز QR: {str(e)}",
@@ -570,33 +655,53 @@ class MyTVTCApp:
             )
             qr_error_label.pack(pady=10)
             
-            # فتح الصورة في المتصفح
             webbrowser.open(f"file://{os.path.abspath(qr_path)}")
         
-        # معلومات المدة
+        present_frame = ttk.Frame(main_frame, style='Light.TFrame')
+        present_frame.pack(pady=(10, 5), fill=tk.X)
+        
+        present_label = ttk.Label(
+            present_frame,
+            text="الطلاب الحاضرون:",
+            font=("Segoe UI", 14, "bold"),
+            foreground=ThemeManager.PRIMARY,
+            background=ThemeManager.BG_LIGHT
+        )
+        present_label.pack(side=tk.LEFT, padx=(0, 10))
+        
+        self.present_count_var = tk.StringVar(value="0")
+        
+        count_label = ttk.Label(
+            present_frame,
+            textvariable=self.present_count_var,
+            font=("Segoe UI", 14, "bold"),
+            foreground=ThemeManager.SUCCESS,
+            background=ThemeManager.BG_LIGHT
+        )
+        count_label.pack(side=tk.LEFT)
+        
         time_frame = ttk.Frame(main_frame, style='Light.TFrame')
-        time_frame.pack(pady=20, fill=tk.X)
+        time_frame.pack(pady=10, fill=tk.X)
         
         time_label = ttk.Label(
             time_frame,
             text=f"مدة التحضير: {duration_minutes} دقيقة",
-            font=("Segoe UI", 12, "bold"),
+            font=("Segoe UI", 14, "bold"),
             foreground=ThemeManager.TEXT_ACCENT,
             background=ThemeManager.BG_LIGHT
         )
         time_label.pack()
         
-        # متغير لعرض الوقت المتبقي
         self.remaining_time_var = tk.StringVar(value="جاري بدء التحضير...")
         
         remaining_label = ttk.Label(
             time_frame,
             textvariable=self.remaining_time_var,
+            font=("Segoe UI", 12),
             style='Light.TLabel'
         )
         remaining_label.pack(pady=(5, 0))
         
-        # زر إغلاق
         close_button = ttk.Button(
             main_frame,
             text="إنهاء التحضير",
@@ -605,66 +710,61 @@ class MyTVTCApp:
         )
         close_button.pack(pady=(20, 0), fill=tk.X)
         
-        # منع إغلاق النافذة بالزر X
         self.qr_window.protocol("WM_DELETE_WINDOW", self.end_attendance_session)
     
     def attendance_timer_thread(self, duration_seconds):
-        """مؤقت الحضور في خيط منفصل"""
         start_time = time.time()
         end_time = start_time + duration_seconds
         
         try:
             while time.time() < end_time:
-                # حساب الوقت المتبقي
                 remaining = end_time - time.time()
                 minutes = int(remaining // 60)
                 seconds = int(remaining % 60)
                 
-                # تحديث النص في واجهة المستخدم
                 if self.qr_window and self.qr_window.winfo_exists():
                     self.remaining_time_var.set(f"الوقت المتبقي: {minutes:02d}:{seconds:02d}")
+                    
+                    if self.excel_handler:
+                        present_count = len(self.excel_handler.present_students)
+                        self.present_count_var.set(str(present_count))
                 
-                # تحديث كل ثانية
                 time.sleep(1)
             
-            # انتهاء الوقت
             self.complete_attendance_session()
             
         except Exception as e:
             print(f"خطأ في مؤقت الحضور: {e}")
     
     def mark_student_attendance(self, student_name, student_id, validate_only=False):
-        """تسجيل حضور الطالب"""
         if not self.excel_handler or not self.lecture_date:
             return False, "خطأ في النظام: لم يتم تهيئة نظام التحضير بشكل صحيح"
         
-        return self.excel_handler.mark_attendance(student_name, student_id, self.lecture_date)
+        result = self.excel_handler.mark_attendance(student_name, student_id, self.lecture_date)
+        
+        if not validate_only and result[0] and self.qr_window and self.qr_window.winfo_exists():
+            present_count = len(self.excel_handler.present_students)
+            self.present_count_var.set(str(present_count))
+            
+        return result
     
     def end_attendance_session(self):
-        """إنهاء جلسة التحضير يدوياً"""
         if messagebox.askyesno("تأكيد", "هل أنت متأكد من رغبتك في إنهاء جلسة التحضير؟"):
             self.complete_attendance_session()
     
     def complete_attendance_session(self):
-        """إكمال جلسة التحضير وحفظ النتائج"""
         try:
             if self.excel_handler and self.lecture_date:
-                # تسجيل الطلاب الغائبين
                 absent_count = self.excel_handler.mark_all_absent(self.lecture_date)
                 
-                # حفظ الملف
                 success, message = self.excel_handler.save_file()
                 
-                # عرض رسالة الإكمال
                 self.show_completion_message(absent_count)
                 
-                # حذف ملفات الإخراج
                 self.cleanup_files()
             
-            # تنظيف الموارد
             self.cleanup_resources()
             
-            # تحديث الحالة
             self.update_status("تم إكمال جلسة التحضير بنجاح")
             
         except Exception as e:
@@ -677,24 +777,19 @@ class MyTVTCApp:
             self.cleanup_resources()
     
     def show_completion_message(self, absent_count):
-        """عرض رسالة إكمال التحضير بتصميم محسن"""
         completion_dialog = tk.Toplevel(self.root)
         completion_dialog.title("اكتمال التحضير")
         completion_dialog.configure(bg=ThemeManager.BG_LIGHT)
         completion_dialog.resizable(False, False)
         
-        # جعل النافذة مركزية
-        self.center_window_on_parent(completion_dialog, 450, 300)
+        self.center_window_on_parent(completion_dialog, 450, 350)
         
-        # جعل النافذة مودال
         completion_dialog.transient(self.root)
         completion_dialog.grab_set()
         
-        # إطار رئيسي
         main_frame = ttk.Frame(completion_dialog, style='Light.TFrame')
         main_frame.pack(padx=30, pady=30, fill=tk.BOTH, expand=True)
         
-        # أيقونة النجاح
         success_label = ttk.Label(
             main_frame,
             text="✓",
@@ -704,7 +799,6 @@ class MyTVTCApp:
         )
         success_label.pack(pady=(0, 10))
         
-        # عنوان
         title_label = ttk.Label(
             main_frame,
             text="تم اكتمال التحضير بنجاح",
@@ -714,17 +808,28 @@ class MyTVTCApp:
         )
         title_label.pack(pady=(0, 20))
         
-        # معلومات
         info_frame = ttk.Frame(main_frame, style='Light.TFrame')
         info_frame.pack(fill=tk.X, pady=(0, 20))
         
-        info_text = f"تم تسجيل {absent_count} طالب كغائب"
-        info_label = ttk.Label(
+        present_count = len(self.excel_handler.present_students) if self.excel_handler else 0
+        
+        present_text = f"تم تسجيل {present_count} طالب كحاضر"
+        present_label = ttk.Label(
             info_frame,
-            text=info_text,
+            text=present_text,
+            foreground=ThemeManager.SUCCESS,
+            background=ThemeManager.BG_LIGHT,
+            font=("Segoe UI", 12)
+        )
+        present_label.pack(pady=5)
+        
+        absent_text = f"تم تسجيل {absent_count} طالب كغائب"
+        absent_label = ttk.Label(
+            info_frame,
+            text=absent_text,
             style='Light.TLabel'
         )
-        info_label.pack()
+        absent_label.pack()
         
         save_label = ttk.Label(
             info_frame,
@@ -733,7 +838,6 @@ class MyTVTCApp:
         )
         save_label.pack(pady=(5, 0))
         
-        # زر إغلاق
         close_button = ttk.Button(
             main_frame,
             text="إغلاق",
@@ -742,31 +846,26 @@ class MyTVTCApp:
         )
         close_button.pack(fill=tk.X, pady=(10, 0))
         
-        # تعيين زر الإغلاق كزر افتراضي
         completion_dialog.bind('<Return>', lambda event: completion_dialog.destroy())
     
     def cleanup_resources(self):
-        """تنظيف الموارد المستخدمة"""
-        # إغلاق نافذة QR
         if self.qr_window and self.qr_window.winfo_exists():
             self.qr_window.destroy()
             self.qr_window = None
         
-        # قطع اتصال ngrok
-        if self.ngrok_tunnel:
+        if self.tunnel_process:
             try:
-                ngrok.disconnect(self.ngrok_tunnel.public_url)
+                self.tunnel_process.terminate()
+                print("تم إغلاق اتصال النفق")
             except:
                 pass
-            self.ngrok_tunnel = None
+            self.tunnel_process = None
         
-        # إعادة تعيين المتغيرات
         self.excel_handler = None
         self.lecture_date = None
         self.timer_thread = None
     
     def cleanup_files(self):
-        """حذف ملفات الإخراج"""
         try:
             output_files = [os.path.abspath(OUTPUT_FILENAME), os.path.abspath(QR_OUTPUT_FILENAME)]
             for file_path in output_files:
@@ -776,7 +875,6 @@ class MyTVTCApp:
             print(f"خطأ أثناء حذف الملفات: {e}")
     
     def show_styled_message(self, title, message, message_type="info"):
-        """عرض رسالة بتصميم محسن"""
         if message_type == "error":
             messagebox.showerror(title, message)
         elif message_type == "warning":
@@ -843,13 +941,12 @@ class MyTVTCApp:
         
         system_info = ttk.Label(
             system_frame,
-            text=f"MyTVTC - نظام التحضير الإلكتروني المتكامل\nالإصدار 2.0.0",
+            text=f"MyTVTC - نظام التحضير الإلكتروني المتكامل\nالإصدار 2.1.0",
             style='Light.TLabel',
             justify=tk.CENTER
         )
         system_info.pack()
         
-        # إضافة إطار منفصل للزر في أسفل النافذة
         button_frame = ttk.Frame(info_frame, style='Light.TFrame')
         button_frame.pack(side=tk.BOTTOM, fill=tk.X, pady=40)
         
@@ -860,8 +957,6 @@ class MyTVTCApp:
             command=dev_window.destroy
         )
         close_btn.pack(pady=10, fill=tk.X, padx=20)
-    
-
     
     def setup_app_icon(self):
         try:

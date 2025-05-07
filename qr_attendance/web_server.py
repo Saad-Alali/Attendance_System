@@ -1,4 +1,4 @@
-from flask import Flask, request, render_template, jsonify
+from flask import Flask, request, render_template, jsonify, make_response
 import threading
 import socket
 import os
@@ -12,7 +12,8 @@ app = Flask(__name__, template_folder=os.path.join(os.path.dirname(__file__), 't
 attendance_data = {
     'session_code': None,
     'callback_function': None,
-    'students': []
+    'students': [],
+    'fingerprint_failures': {}  # Para registrar fallos de verificación por estudiante
 }
 
 def get_local_ip():
@@ -23,7 +24,7 @@ def get_local_ip():
         s.close()
         return ip
     except:
-        return "127.0.0.1"
+        return socket.gethostbyname(socket.gethostname())
 
 def get_client_device_info(request):
     user_agent = request.user_agent.string
@@ -129,32 +130,61 @@ def submit_attendance():
         student_id = request.form.get('student_id')
         
         if not all([session_code, student_name, student_id]):
-            return jsonify({'status': 'error', 'message': 'يجب ملء جميع الحقول'})
+            response = make_response(jsonify({'status': 'error', 'message': 'يجب ملء جميع الحقول'}))
+            response.status_code = 400  # Bad Request
+            return response
         
         if session_code != attendance_data['session_code']:
-            return jsonify({'status': 'error', 'message': 'الجلسة غير صالحة أو منتهية الصلاحية'})
+            response = make_response(jsonify({'status': 'error', 'message': 'الجلسة غير صالحة أو منتهية الصلاحية'}))
+            response.status_code = 403  # Forbidden
+            return response
         
+        # Verificar si el estudiante ya está registrado con un error de huella
+        student_key = f"{student_name}_{student_id}"
+        if student_key in attendance_data.get('fingerprint_failures', {}):
+            error_info = attendance_data['fingerprint_failures'][student_key]
+            response = make_response(jsonify({
+                'status': 'error', 
+                'message': f"تم رفض التسجيل مسبقاً بسبب: {error_info['message']}"
+            }))
+            response.status_code = 403  # Forbidden
+            return response
+        
+        # Validar primero si el estudiante existe en el sistema
         validation_result = None
         if attendance_data['callback_function']:
             is_valid, message = attendance_data['callback_function'](student_name, student_id, validate_only=True)
             validation_result = (is_valid, message)
             
             if not is_valid:
-                return jsonify({'status': 'error', 'message': message})
+                response = make_response(jsonify({'status': 'error', 'message': message}))
+                response.status_code = 404  # Not Found
+                return response
         
-        # تمرير object request إلى الدالة لإنشاء بصمة من معلومات المتصفح
+        # Verificar la huella digital del dispositivo
         fingerprint = DeviceFingerprint()
-        is_verified = fingerprint.verify_student(student_name, request)
+        is_fingerprint_valid, fingerprint_message = fingerprint.verify_student(student_name, request)
         
-        if not is_verified[0]:
-            if is_verified[1] == "هذا الجهاز غير مسجل بعد":
-                # تمرير object request أيضاً هنا
-                registration_result = fingerprint.register_student(student_name, request)
-                if not registration_result[0]:
-                    return jsonify({'status': 'error', 'message': registration_result[1]})
-            else:
-                return jsonify({'status': 'error', 'message': is_verified[1]})
+        # CAMBIO CRÍTICO: Si la huella digital no es válida, rechazar completamente
+        if not is_fingerprint_valid:
+            # Registrar el intento fallido para auditoría
+            device_info = get_client_device_info(request)
+            print(f"⚠️ Error de verificación de huella: {student_name} ({student_id}) - {fingerprint_message}")
+            print(f"  Desde dispositivo: {device_info.get('device_type', 'desconocido')} - {device_info.get('os', 'desconocido')} - IP: {device_info.get('ip_address', 'desconocido')}")
+            
+            # Registrar este estudiante como fallido para evitar intentos repetidos
+            attendance_data.setdefault('fingerprint_failures', {})[student_key] = {
+                'message': fingerprint_message,
+                'timestamp': datetime.now().isoformat(),
+                'device_info': device_info
+            }
+            
+            # Devolver error HTTP 403 Forbidden para que el cliente lo maneje correctamente
+            response = make_response(jsonify({'status': 'error', 'message': fingerprint_message}))
+            response.status_code = 403  # Forbidden
+            return response
         
+        # Si llegamos aquí, la huella es válida, recopilamos información del dispositivo
         device_info = get_client_device_info(request)
         
         student_data = {
@@ -176,10 +206,19 @@ def submit_attendance():
         for key, value in student_data['device_info'].items():
             print(f"  {key}: {value}")
         
+        # Registrar los datos del estudiante
         attendance_data['students'].append(student_data)
         
+        # Marcar la asistencia en Excel
         if attendance_data['callback_function'] and validation_result and validation_result[0]:
-            attendance_data['callback_function'](student_name, student_id)
+            result = attendance_data['callback_function'](student_name, student_id)
+            if result and isinstance(result, tuple) and len(result) >= 2 and not result[0]:
+                # Si la función de callback devuelve un error, regresar error al cliente
+                response = make_response(jsonify({'status': 'error', 'message': result[1]}))
+                response.status_code = 400
+                return response
+                
+            print(f"✅ Asistencia registrada para: {student_name} ({student_id})")
         
         return jsonify({'status': 'success', 'message': 'تم تسجيل حضورك بنجاح'})
 
@@ -190,6 +229,7 @@ def start_server(host=None, port=5000, session_code=None, callback=None):
     attendance_data['session_code'] = session_code
     attendance_data['callback_function'] = callback
     attendance_data['students'] = []
+    attendance_data['fingerprint_failures'] = {}
     
     server_url = f"http://{host}:{port}"
     attendance_url = f"{server_url}/attendance?session={session_code}"
