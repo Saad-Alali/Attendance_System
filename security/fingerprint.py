@@ -229,7 +229,25 @@ class DeviceFingerprint:
                 else:
                     return False, f"خطأ: جهاز مشابه مسجل باسم {info.get('student')}"
         
-        return False, "هذا الجهاز غير مسجل بعد"
+        # إذا وصلنا إلى هنا، فهذا يعني أن الجهاز غير مسجل
+        # تسجيل الجهاز تلقائيًا
+        devices[primary_fp] = {
+            'student': student_name,
+            'secondary': secondary_fp,
+            'hardware': hardware_fp,
+            'registered_at': datetime.now().isoformat(),
+            'details': fingerprints['raw']
+        }
+        
+        device_mappings[hardware_fp] = student_name
+        
+        data['devices'] = devices
+        data['device_mappings'] = device_mappings
+        
+        if self._save_data(data):
+            return True, f"تم تسجيل الطالب {student_name} بنجاح مع بصمة هذا الجهاز"
+        else:
+            return False, "خطأ في النظام: لا يمكن تسجيل الجهاز"
     
     def _read_data(self):
         try:

@@ -1,12 +1,12 @@
 {
     "devices": {
-        "08848e268c8263d855cf18b6dd8658b97f92b2048a8bf04ab8014abf8b8c6fbe": {
-            "student": "سعد بندر العتيبي",
-            "secondary": "5fb6fde404b1b15aa3ab765e87d14cb5da5caf6af4c6360952ea461b55210088",
+        "ea68550e80cd40939c38a1a72550a17cbd3deba5ed0ba3c9c0076b05521c8c79": {
+            "student": "سعد ياسر العلي",
+            "secondary": "2116fdc09212dc50ea7ccecf71ab59727835a2cb6ff143da71dbcab70d66549f",
             "hardware": "6bccd2a263b33f1a41f9485a24ecd0c7cf37208674d07169ceff2d34d85f5858",
-            "registered_at": "2025-04-26T17:12:17.567337",
+            "registered_at": "2025-05-07T16:51:15.376798",
             "details": {
-                "user_agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 18_3_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.3 Mobile/15E148 Safari/604.1",
+                "user_agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 18_4_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.4 Mobile/15E148 Safari/604.1",
                 "platform": "iPhone",
                 "webgl_renderer": "Apple GPU",
                 "screen_width": 430,
@@ -15,15 +15,15 @@
                 "pixel_ratio": 3,
                 "language": "en-US",
                 "timezone": "Asia/Riyadh",
-                "ip_address": "127.0.0.1"
+                "ip_address": "172.20.10.1"
             }
         }
     },
     "device_mappings": {
-        "6bccd2a263b33f1a41f9485a24ecd0c7cf37208674d07169ceff2d34d85f5858": "سعد بندر العتيبي"
+        "6bccd2a263b33f1a41f9485a24ecd0c7cf37208674d07169ceff2d34d85f5858": "سعد ياسر العلي"
     },
     "metadata": {
-        "created": "2025-04-26T17:12:17.560231",
-        "updated": "2025-04-26T17:12:17.567345"
+        "created": "2025-05-07T16:46:45.283330",
+        "updated": "2025-05-07T16:51:15.376825"
     }
 }

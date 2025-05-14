@@ -14,6 +14,7 @@ import tempfile
 import random
 import urllib.request
 
+
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 try:
     from qr_attendance.excel_handler import ExcelHandler
@@ -277,13 +278,9 @@ class MyTVTCApp:
             current_button.config(text="جاري التنفيذ...")
             self.root.update()
             
-            if script_name == "main-qr_attendance.py":
-                self.start_qr_attendance()
-                current_button.config(text=original_text)
-                return
+            script_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), script_name)
             
-            script_path = Path(script_name)
-            if not script_path.exists():
+            if not os.path.exists(script_path):
                 messagebox.showwarning(
                     "تحذير",
                     f"الملف {script_name} غير موجود في المجلد الحالي."
@@ -292,7 +289,7 @@ class MyTVTCApp:
                 self.update_status("جاهز")
                 return
             
-            process = subprocess.Popen([sys.executable, script_name])
+            subprocess.Popen([sys.executable, script_path])
             
             self.root.after(2000, lambda: current_button.config(text=original_text))
             self.root.after(2500, lambda: self.update_status("تم التنفيذ بنجاح"))
@@ -389,96 +386,23 @@ class MyTVTCApp:
         try:
             self.update_status("جاري بدء نظام التحضير...")
             
-            excel_file = filedialog.askopenfilename(
-                title="اختر ملف التحضير",
-                filetypes=[("ملفات إكسل", "*.xlsx;*.xls")]
-            )
+            # تشغيل main-qr_attendance.py مباشرة كعملية منفصلة
+            script_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "main-qr_attendance.py")
             
-            if not excel_file:
-                self.update_status("تم إلغاء العملية")
-                return
-            
-            self.update_status("جاري تحليل ملف التحضير...")
-            
-            self.excel_handler = ExcelHandler(excel_file)
-            self.excel_handler.load_file()
-            
-            date_col = COLUMN_NAMES["date"]
-            self.excel_handler.convert_date_column()
-            
-            today_lectures = self.excel_handler.check_lecture_today()
-            if today_lectures is None or today_lectures.empty:
+            if not os.path.exists(script_path):
                 self.show_styled_message(
-                    "لا توجد محاضرة",
-                    "لا توجد محاضرة مجدولة لليوم الحالي.",
-                    "warning"
+                    "خطأ",
+                    "ملف main-qr_attendance.py غير موجود في المجلد الحالي.",
+                    "error"
                 )
-                self.update_status("لا توجد محاضرة اليوم")
-                return
-            
-            lecture_info = today_lectures.iloc[0]
-            
-            lecture_name_col = COLUMN_NAMES["lecture_name"]
-            section_col = COLUMN_NAMES["section"]
-            date_col = COLUMN_NAMES["date"]
-            
-            lecture_name = "محاضرة غير معروفة"
-            if lecture_name_col in lecture_info.index and not pd.isnull(lecture_info[lecture_name_col]):
-                lecture_name = lecture_info[lecture_name_col]
-            elif section_col in lecture_info.index and not pd.isnull(lecture_info[section_col]):
-                lecture_name = lecture_info[section_col]
-                
-            self.lecture_date = lecture_info[date_col]
-            
-            self.update_status(f"تم العثور على محاضرة: {lecture_name}")
-            
-            self.excel_handler.reset_attendance_for_date(self.lecture_date)
-            
-            duration_minutes = self.show_duration_dialog()
-            if duration_minutes is None:
-                self.update_status("تم إلغاء العملية")
+                self.update_status("فشل في بدء نظام التحضير")
                 return
                 
-            custom_attendance_duration = duration_minutes * 60
+            process = subprocess.Popen([sys.executable, script_path])
+            self.update_status("تم بدء نظام التحضير بنجاح")
             
-            session_code = str(int(time.time()))[-8:]
-            port = 5000
-            
-            def mark_attendance_with_fingerprint(student_name, student_id, validate_only=False):
-                if not self.excel_handler or not self.lecture_date:
-                    return False, "خطأ في النظام: لم يتم تهيئة نظام التحضير بشكل صحيح"
-                
-                result = self.excel_handler.mark_attendance(student_name, student_id, self.lecture_date)
-                
-                if not validate_only and result[0] and self.qr_window and self.qr_window.winfo_exists():
-                    present_count = len(self.excel_handler.present_students)
-                    self.present_count_var.set(str(present_count))
-                    
-                return result
-            
-            server_url, _ = start_server(
-                host="0.0.0.0",
-                port=port,
-                session_code=session_code,
-                callback=mark_attendance_with_fingerprint
-            )
-            
-            public_url, self.tunnel_process = self.create_tunnel(port)
-            
-            qr_attendance_url = f"{public_url}/attendance?session={session_code}"
-            qr_output_path = QR_OUTPUT_FILENAME
-            _, _, _ = generate_lecture_qr(lecture_name, self.lecture_date, qr_attendance_url, qr_output_path)
-            
-            self.update_status("تم إنشاء رمز QR بنجاح")
-            
-            self.show_qr_window(qr_output_path, lecture_name, duration_minutes)
-            
-            self.timer_thread = threading.Thread(
-                target=self.attendance_timer_thread,
-                args=(custom_attendance_duration,)
-            )
-            self.timer_thread.daemon = True
-            self.timer_thread.start()
+            # انتظار لإعطاء البرنامج الأصلي وقت للتشغيل
+            time.sleep(1)
             
         except Exception as e:
             self.show_styled_message(
@@ -487,7 +411,6 @@ class MyTVTCApp:
                 "error"
             )
             self.update_status("فشل في بدء نظام التحضير")
-            self.cleanup_resources()
     
     def show_duration_dialog(self):
         duration_dialog = tk.Toplevel(self.root)
@@ -919,15 +842,6 @@ class MyTVTCApp:
             background=ThemeManager.BG_LIGHT
         )
         dev_name1.pack(pady=5)
-        
-        dev_name2 = ttk.Label(
-            info_frame,
-            text="م. عمار الزهراني",
-            font=("Segoe UI", 16, "bold"),
-            foreground=ThemeManager.TEXT_ACCENT,
-            background=ThemeManager.BG_LIGHT
-        )
-        dev_name2.pack(pady=5)
         
         phone_label = ttk.Label(
             info_frame,
