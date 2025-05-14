@@ -8,6 +8,7 @@ import webbrowser
 from pathlib import Path
 import socket
 import tempfile
+import threading
 
 def resource_path(relative_path):
     try:
@@ -279,22 +280,63 @@ class MyTVTCApp:
             current_button.config(text="جاري التنفيذ...")
             self.root.update()
             
+            # استخراج اسم الملف بدون لاحقة .py
+            script_base = os.path.splitext(script_name)[0]
+            
+            # مسار Python الذي نستخدمه حالياً
+            python_executable = sys.executable
+            
+            # مسار تنفيذ النص البرمجي
+            if hasattr(sys, '_MEIPASS'):  # نحن في ملف مجمّع
+                # استيراد الوحدة مباشرة بدلاً من تشغيلها كعملية منفصلة
+                module_name = script_base.replace('-', '_')
+                try:
+                    # نتأكد أن الوحدة ليست موجودة بالفعل في الذاكرة
+                    if module_name in sys.modules:
+                        del sys.modules[module_name]
+                    
+                    # استيراد الوحدة
+                    module = __import__(module_name)
+                    
+                    # تشغيل الدالة الرئيسية
+                    threading.Thread(target=module.main, daemon=True).start()
+                    
+                    self.root.after(2000, lambda: current_button.config(text=original_text))
+                    self.root.after(2500, lambda: self.update_status("تم التنفيذ بنجاح"))
+                    return
+                except ImportError as e:
+                    print(f"خطأ في استيراد الوحدة {module_name}: {e}")
+                    # سنواصل باستخدام طريقة subprocess
+            
+            # إنشاء مسار كامل للنص البرمجي
             script_path = resource_path(script_name)
             
-            if hasattr(sys, '_MEIPASS'):
-                script_base = os.path.splitext(script_name)[0]
-                subprocess.Popen([sys.executable, script_base])
-            else:
-                if not os.path.exists(script_path):
-                    messagebox.showwarning(
-                        "تحذير",
-                        f"الملف {script_name} غير موجود في المجلد الحالي."
-                    )
-                    current_button.config(text=original_text)
-                    self.update_status("جاهز")
-                    return
-                
-                subprocess.Popen([sys.executable, script_path])
+            # محاولة معرفة ما إذا كان الملف موجود
+            if not os.path.exists(script_path) and not hasattr(sys, '_MEIPASS'):
+                messagebox.showwarning(
+                    "تحذير",
+                    f"الملف {script_name} غير موجود في المجلد الحالي."
+                )
+                current_button.config(text=original_text)
+                self.update_status("جاهز")
+                return
+            
+            # إضافة جزء مهم: ضمان أننا لا نقوم بتشغيل main_ui.py مرة أخرى
+            # نستخدم مسار مطلق لتفادي المشاكل
+            full_script_path = os.path.abspath(script_path)
+            main_ui_path = os.path.abspath(__file__)
+            
+            if full_script_path == main_ui_path:
+                messagebox.showerror(
+                    "خطأ",
+                    f"محاولة تشغيل {script_name} تشير إلى ملف main_ui.py نفسه. هذا غير مدعوم."
+                )
+                current_button.config(text=original_text)
+                self.update_status("خطأ في تكوين النظام")
+                return
+            
+            # استخدام مسارات مطلقة لتجنب مشاكل المسارات النسبية
+            process = subprocess.Popen([python_executable, full_script_path])
             
             self.root.after(2000, lambda: current_button.config(text=original_text))
             self.root.after(2500, lambda: self.update_status("تم التنفيذ بنجاح"))
