@@ -2,11 +2,25 @@ import os
 import sys
 from tkinter import Tk, filedialog
 
+def resource_path(relative_path):
+    try:
+        base_path = sys._MEIPASS
+    except Exception:
+        base_path = os.path.abspath(".")
+    return os.path.join(base_path, relative_path)
+
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
-from project.file_validator import validate_excel_file
-from project.browser_automation import automate_browser
-from project.excel_processor import merge_excel_files, split_by_component, update_component_files
+try:
+    from project.file_validator import validate_excel_file
+    from project.browser_automation import automate_browser
+    from project.excel_processor import merge_excel_files, split_by_component, update_component_files
+except ImportError:
+    module_path = resource_path('project')
+    sys.path.append(module_path)
+    from file_validator import validate_excel_file
+    from browser_automation import automate_browser
+    from excel_processor import merge_excel_files, split_by_component, update_component_files
 
 def main():
     root = Tk()

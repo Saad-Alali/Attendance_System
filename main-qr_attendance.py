@@ -15,12 +15,25 @@ import tempfile
 import base64
 import shutil
 
+def resource_path(relative_path):
+    try:
+        base_path = sys._MEIPASS
+    except Exception:
+        base_path = os.path.abspath(".")
+    return os.path.join(base_path, relative_path)
+
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
 
-from qr_attendance.excel_handler import ExcelHandler
-from qr_attendance.generate_qr import generate_lecture_qr
-from qr_attendance.web_server import start_server
-from qr_attendance.config import COLUMN_NAMES, ATTENDANCE_DURATION, QR_OUTPUT_FILENAME, OUTPUT_FILENAME
+try:
+    from qr_attendance.excel_handler import ExcelHandler
+    from qr_attendance.generate_qr import generate_lecture_qr
+    from qr_attendance.web_server import start_server
+    from qr_attendance.config import COLUMN_NAMES, ATTENDANCE_DURATION, QR_OUTPUT_FILENAME, OUTPUT_FILENAME
+except ImportError:
+    from excel_handler import ExcelHandler
+    from generate_qr import generate_lecture_qr
+    from web_server import start_server
+    from config import COLUMN_NAMES, ATTENDANCE_DURATION, QR_OUTPUT_FILENAME, OUTPUT_FILENAME
 
 def get_local_ip():
     try:
@@ -172,7 +185,7 @@ def reset_previous_attendance_data(excel_handler, lecture_date):
     return count
 
 def create_security_dir():
-    security_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'security')
+    security_dir = resource_path('security')
     if not os.path.exists(security_dir):
         os.makedirs(security_dir)
     

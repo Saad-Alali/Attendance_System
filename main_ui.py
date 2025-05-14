@@ -3,17 +3,18 @@ from tkinter import ttk, messagebox, filedialog, simpledialog
 import subprocess
 import sys
 import os
-import threading
 import time
-import io
-import pandas as pd
 import webbrowser
 from pathlib import Path
 import socket
 import tempfile
-import random
-import urllib.request
 
+def resource_path(relative_path):
+    try:
+        base_path = sys._MEIPASS
+    except Exception:
+        base_path = os.path.abspath(".")
+    return os.path.join(base_path, relative_path)
 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 try:
@@ -278,18 +279,22 @@ class MyTVTCApp:
             current_button.config(text="جاري التنفيذ...")
             self.root.update()
             
-            script_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), script_name)
+            script_path = resource_path(script_name)
             
-            if not os.path.exists(script_path):
-                messagebox.showwarning(
-                    "تحذير",
-                    f"الملف {script_name} غير موجود في المجلد الحالي."
-                )
-                current_button.config(text=original_text)
-                self.update_status("جاهز")
-                return
-            
-            subprocess.Popen([sys.executable, script_path])
+            if hasattr(sys, '_MEIPASS'):
+                script_base = os.path.splitext(script_name)[0]
+                subprocess.Popen([sys.executable, script_base])
+            else:
+                if not os.path.exists(script_path):
+                    messagebox.showwarning(
+                        "تحذير",
+                        f"الملف {script_name} غير موجود في المجلد الحالي."
+                    )
+                    current_button.config(text=original_text)
+                    self.update_status("جاهز")
+                    return
+                
+                subprocess.Popen([sys.executable, script_path])
             
             self.root.after(2000, lambda: current_button.config(text=original_text))
             self.root.after(2500, lambda: self.update_status("تم التنفيذ بنجاح"))
@@ -386,22 +391,24 @@ class MyTVTCApp:
         try:
             self.update_status("جاري بدء نظام التحضير...")
             
-            # تشغيل main-qr_attendance.py مباشرة كعملية منفصلة
-            script_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "main-qr_attendance.py")
+            script_path = resource_path("main-qr_attendance.py")
             
-            if not os.path.exists(script_path):
-                self.show_styled_message(
-                    "خطأ",
-                    "ملف main-qr_attendance.py غير موجود في المجلد الحالي.",
-                    "error"
-                )
-                self.update_status("فشل في بدء نظام التحضير")
-                return
-                
-            process = subprocess.Popen([sys.executable, script_path])
+            if hasattr(sys, '_MEIPASS'):
+                subprocess.Popen([sys.executable, "main-qr_attendance"])
+            else:
+                if not os.path.exists(script_path):
+                    self.show_styled_message(
+                        "خطأ",
+                        "ملف main-qr_attendance.py غير موجود في المجلد الحالي.",
+                        "error"
+                    )
+                    self.update_status("فشل في بدء نظام التحضير")
+                    return
+                    
+                process = subprocess.Popen([sys.executable, script_path])
+            
             self.update_status("تم بدء نظام التحضير بنجاح")
             
-            # انتظار لإعطاء البرنامج الأصلي وقت للتشغيل
             time.sleep(1)
             
         except Exception as e:
@@ -874,8 +881,8 @@ class MyTVTCApp:
     
     def setup_app_icon(self):
         try:
-            icon_path = Path("app_icon.ico")
-            if icon_path.exists():
+            icon_path = resource_path("app_icon.ico")
+            if os.path.exists(icon_path):
                 self.root.iconbitmap(icon_path)
         except Exception:
             pass

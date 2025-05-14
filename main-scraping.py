@@ -1,8 +1,26 @@
 import time
 import logging
 import traceback
-from scraping.login import initialize_browser, wait_for_manual_login
-from scraping.fetch_data import export_attendance_data
+import sys
+import os
+
+def resource_path(relative_path):
+    try:
+        base_path = sys._MEIPASS
+    except Exception:
+        base_path = os.path.abspath(".")
+    return os.path.join(base_path, relative_path)
+
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+
+try:
+    from scraping.login import initialize_browser, wait_for_manual_login
+    from scraping.fetch_data import export_attendance_data
+except ImportError:
+    module_path = resource_path('scraping')
+    sys.path.append(module_path)
+    from login import initialize_browser, wait_for_manual_login
+    from fetch_data import export_attendance_data
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
