@@ -280,38 +280,32 @@ class MyTVTCApp:
             current_button.config(text="جاري التنفيذ...")
             self.root.update()
             
-            # استخراج اسم الملف بدون لاحقة .py
             script_base = os.path.splitext(script_name)[0]
             
-            # مسار Python الذي نستخدمه حالياً
-            python_executable = sys.executable
-            
-            # مسار تنفيذ النص البرمجي
-            if hasattr(sys, '_MEIPASS'):  # نحن في ملف مجمّع
-                # استيراد الوحدة مباشرة بدلاً من تشغيلها كعملية منفصلة
+            if hasattr(sys, '_MEIPASS'):
                 module_name = script_base.replace('-', '_')
+                
                 try:
-                    # نتأكد أن الوحدة ليست موجودة بالفعل في الذاكرة
+                    sys.path.insert(0, sys._MEIPASS)
+                    
                     if module_name in sys.modules:
                         del sys.modules[module_name]
                     
-                    # استيراد الوحدة
-                    module = __import__(module_name)
+                    if module_name == 'main_ui':
+                        raise ImportError("تجنب تشغيل main_ui مرة أخرى")
                     
-                    # تشغيل الدالة الرئيسية
+                    exec(f"import {module_name}")
+                    module = sys.modules[module_name]
                     threading.Thread(target=module.main, daemon=True).start()
                     
                     self.root.after(2000, lambda: current_button.config(text=original_text))
                     self.root.after(2500, lambda: self.update_status("تم التنفيذ بنجاح"))
                     return
-                except ImportError as e:
+                except Exception as e:
                     print(f"خطأ في استيراد الوحدة {module_name}: {e}")
-                    # سنواصل باستخدام طريقة subprocess
             
-            # إنشاء مسار كامل للنص البرمجي
             script_path = resource_path(script_name)
             
-            # محاولة معرفة ما إذا كان الملف موجود
             if not os.path.exists(script_path) and not hasattr(sys, '_MEIPASS'):
                 messagebox.showwarning(
                     "تحذير",
@@ -321,12 +315,11 @@ class MyTVTCApp:
                 self.update_status("جاهز")
                 return
             
-            # إضافة جزء مهم: ضمان أننا لا نقوم بتشغيل main_ui.py مرة أخرى
-            # نستخدم مسار مطلق لتفادي المشاكل
             full_script_path = os.path.abspath(script_path)
             main_ui_path = os.path.abspath(__file__)
             
-            if full_script_path == main_ui_path:
+            if os.path.normpath(full_script_path) == os.path.normpath(main_ui_path) or \
+               os.path.basename(full_script_path) == 'main_ui.py':
                 messagebox.showerror(
                     "خطأ",
                     f"محاولة تشغيل {script_name} تشير إلى ملف main_ui.py نفسه. هذا غير مدعوم."
@@ -335,7 +328,7 @@ class MyTVTCApp:
                 self.update_status("خطأ في تكوين النظام")
                 return
             
-            # استخدام مسارات مطلقة لتجنب مشاكل المسارات النسبية
+            python_executable = sys.executable
             process = subprocess.Popen([python_executable, full_script_path])
             
             self.root.after(2000, lambda: current_button.config(text=original_text))

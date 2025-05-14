@@ -1,25 +1,45 @@
 # -*- mode: python ; coding: utf-8 -*-
 
+block_cipher = None
+
+added_files = [
+    ('main-qr_attendance.py', '.'),
+    ('main-Grad.py', '.'),
+    ('main-scraping.py', '.'),
+    ('main-finished.py', '.'),
+    ('qr_attendance', 'qr_attendance'),
+    ('project', 'project'),
+    ('scraping', 'scraping'),
+    ('security', 'security'),
+]
 
 a = Analysis(
     ['main_ui.py'],
     pathex=[],
     binaries=[],
-    datas=[('main-qr_attendance.py', '.'), ('main-Grad.py', '.'), ('main-scraping.py', '.'), ('main-finished.py', '.'), ('qr_attendance', 'qr_attendance'), ('project', 'project'), ('scraping', 'scraping'), ('security', 'security')],
-    hiddenimports=[],
+    datas=added_files,
+    hiddenimports=[
+        'flask', 'selenium', 'pandas', 'numpy', 'qrcode', 
+        'pyzbar', 'openpyxl', 'PIL', 'cv2', 'difflib',
+        'flask.templating', 'flask.scaffold', 'email.mime.text'
+    ],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
     excludes=[],
+    win_no_prefer_redirects=False,
+    win_private_assemblies=False,
+    cipher=block_cipher,
     noarchive=False,
-    optimize=0,
 )
-pyz = PYZ(a.pure)
+
+pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
 
 exe = EXE(
     pyz,
     a.scripts,
     a.binaries,
+    a.zipfiles,
     a.datas,
     [],
     name='MyTVTC',
