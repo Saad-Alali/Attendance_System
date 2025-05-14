@@ -3,16 +3,11 @@ from tkinter import ttk, messagebox, filedialog, simpledialog
 import subprocess
 import sys
 import os
-import threading
 import time
-import io
-import pandas as pd
 import webbrowser
 from pathlib import Path
 import socket
 import tempfile
-import random
-import urllib.request
 
 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
